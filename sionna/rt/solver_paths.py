@@ -4761,7 +4761,16 @@ class SolverPaths(SolverBase):
         scat_ind = tf.where(types == Paths.SCATTERED)[:,0]
         n_scat = tf.size(scat_ind)
         if n_scat > 0:
-            n_other = a.shape[-2] - n_scat
+            # Acquire minimum non-scattered path index
+            scat_min_ind = tf.reduce_min(scat_ind)
+            # Acquire maximum non-scattered path index
+            scat_max_ind = tf.reduce_max(scat_ind)
+            # a_prev : [num_rx, 1, rx_array_size, num_tx, num_tx_patterns,
+            #   tx_array_size, scat_min_ind, 2]
+            a_prev = tf.gather(a, tf.range(0, scat_min_ind), axis=-2)
+            # a_next : [num_rx, 1, rx_array_size, num_tx, num_tx_patterns,
+            #   tx_array_size, max_num_paths - scat_max_ind + 1, 2]
+            a_next = tf.gather(a, tf.range(scat_max_ind + 1, a.shape[-2]), axis=-2)
 
             # On CPU, indexing with -1 does not work. Hence we replace -1 by 0.
             # This makes no difference on the resulting paths as such paths are
@@ -4871,17 +4880,13 @@ class SolverPaths(SolverBase):
 
             # a_scat : [num_rx, 1, rx_array_size, num_tx, num_tx_patterns,
             #   tx_array_size, n_scat, 2]
-            # a_other : [num_rx, 1, rx_array_size, num_tx, num_tx_patterns,
-            #   tx_array_size, max_num_paths - n_scat, 2]
-            a_other, a_scat = tf.split(a, [n_other, n_scat], axis=-2)
+            a_scat = tf.gather(a, scat_ind, axis=-2)
             # [num_rx, 1/rx_array_size, num_tx, 1/tx_array_size,
-            #   max_num_paths, 3]
-            _, scat_theta_hat_r = tf.split(theta_hat_r, [n_other, n_scat],
-                                           axis=-2)
+            #   n_scat, 3]
+            scat_theta_hat_r = tf.gather(theta_hat_r, scat_ind, axis=-2)
             # [num_rx, 1/rx_array_size, num_tx, 1/tx_array_size,
-            #   max_num_paths, 3]
-            _, scat_phi_hat_r = tf.split(phi_hat_r, [n_other, n_scat],
-                                           axis=-2)
+            #   n_scat, 3]
+            scat_phi_hat_r = tf.gather(phi_hat_r, scat_ind, axis=-2)
 
             # Compute incoming field
             # [num_rx, 1, 1/rx_array_size, num_tx, 1, 1/tx_array_size, n_scat,
@@ -5018,7 +5023,7 @@ class SolverPaths(SolverBase):
             a_scat = tf.linalg.matvec(trans_mat, a_scat)
 
             # Concat with other paths
-            a = tf.concat([a_other, a_scat], axis=-2)
+            a = tf.concat([a_prev, a_scat, a_next], axis=-2)
 
         # [num_rx, num_rx_patterns, 1/rx_array_size, num_tx, num_tx_patterns,
         #   1/tx_array_size, max_num_paths]
