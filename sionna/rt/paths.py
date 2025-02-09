@@ -738,6 +738,9 @@ class Paths:
                     num_valid_paths_this_ris = tf.reduce_sum(valid_this_ris,
                                                              axis=-1,
                                                              keepdims=True)
+                    #Skip processing if no valid RIS paths exist
+                    if tf.math.count_nonzero(num_valid_paths_this_ris) == 0:
+                        continue
                     # Compute average delay over all valid paths
                     # [batch_size, num_rx, num_rx_ant, num_tx, num_tx_ant,
                     #   1] or [batch_size, num_rx,num_tx, 1]
@@ -774,12 +777,15 @@ class Paths:
                     tau_combined_ris_all.append(mean_tau_this_ris)
 
                     index_start = index_end
-                # [batch_size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ris,
-                # num_time_steps]
-                a_combined_ris_all = tf.concat(a_combined_ris_all, axis=-2)
-                # [batch_size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ris]
-                #  or [batch_size, num_rx, num_tx, num_ris]
-                tau_combined_ris_all = tf.concat(tau_combined_ris_all, axis=-1)
+                # Check if any RIS paths were found
+                ris_clusters_exist = len(a_combined_ris_all) > 0
+                if ris_clusters_exist > 0:
+                    # [batch_size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ris,
+                    # num_time_steps]
+                    a_combined_ris_all = tf.concat(a_combined_ris_all, axis=-2)
+                    # [batch_size, num_rx, num_rx_ant, num_tx, num_tx_ant, num_ris]
+                    #  or [batch_size, num_rx, num_tx, num_ris]
+                    tau_combined_ris_all = tf.concat(tau_combined_ris_all, axis=-1)
 
             else:
                 selection_mask = tf.logical_or(selection_mask,
@@ -794,7 +800,7 @@ class Paths:
         tau = tf.gather(self.tau, tf.where(selection_mask)[:,0], axis=-1)
 
         # If RIS paths were combined, add the results of the clustering
-        if ris and cluster_ris_paths:
+        if ris and cluster_ris_paths and ris_clusters_exist:
             a = tf.concat([a, a_combined_ris_all], axis=-2)
             tau = tf.concat([tau, tau_combined_ris_all], axis=-1)
 
